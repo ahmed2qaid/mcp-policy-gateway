@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from pathlib import Path
 
 
 def schema_digest(schema: dict) -> str:
@@ -55,3 +56,37 @@ class SchemaPinStore:
 
     def export(self) -> dict[str, str]:
         return dict(sorted(self._pins.items()))
+
+
+class FileSchemaPinStore(SchemaPinStore):
+    """Schema pin registry persisted as a small reviewed JSON artifact."""
+
+    def __init__(self, path: str | Path) -> None:
+        super().__init__()
+        self.path = Path(path)
+
+    @classmethod
+    def load(cls, path: str | Path) -> "FileSchemaPinStore":
+        store = cls(path)
+        if not store.path.exists():
+            return store
+        data = json.loads(store.path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("schema registry file must contain an object")
+        loaded = SchemaPinStore.from_dict(data)
+        store._pins = loaded.export()
+        return store
+
+    def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp.write_text(
+            json.dumps(self.export(), indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        tmp.replace(self.path)
+
+    def pin(self, tool: str, schema: dict) -> str:
+        digest = super().pin(tool, schema)
+        self.save()
+        return digest
