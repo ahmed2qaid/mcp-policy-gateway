@@ -9,6 +9,14 @@ from .audit import NetworkAuditEvent
 from .policy import Decision, PolicyEngine
 from .registry import UpstreamConfig, UpstreamRegistry
 from .schema_pin import SchemaPinStore
+from .security import (
+    AgentIdentity,
+    ApprovalTokenSigner,
+    EgressPolicy,
+    SlidingWindowRateLimiter,
+    arguments_digest,
+    prompt_injection_signals,
+)
 from .transport import CircuitBreaker, CircuitOpenError
 
 
@@ -28,6 +36,10 @@ class PolicyGatewayService:
         enforce_schema_pins: bool = False,
         auto_pin: bool = False,
         audit_sink=None,
+        approval_signer: ApprovalTokenSigner | None = None,
+        rate_limiter: SlidingWindowRateLimiter | None = None,
+        egress_policy: EgressPolicy | None = None,
+        prompt_injection_review: bool = True,
     ) -> None:
         self.engine = engine
         self.registry = registry
@@ -36,6 +48,10 @@ class PolicyGatewayService:
         self.enforce_schema_pins = enforce_schema_pins
         self.auto_pin = auto_pin
         self.audit_sink = audit_sink
+        self.approval_signer = approval_signer
+        self.rate_limiter = rate_limiter
+        self.egress_policy = egress_policy
+        self.prompt_injection_review = prompt_injection_review
         self.breakers = {
             config.name: CircuitBreaker(config.failure_threshold, config.recovery_seconds)
             for config in registry
@@ -81,19 +97,67 @@ class PolicyGatewayService:
         arguments: dict,
         *,
         request_id: object | None = None,
+        identity: AgentIdentity | None = None,
+        approval_token: str | None = None,
     ) -> Any:
+        identity = identity or AgentIdentity.anonymous()
         try:
             config, raw_name = self.registry.resolve_tool(exposed_name)
         except KeyError as exc:
             return self._tool_error(str(exc), {"code": "gateway.unknown_tool"})
 
-        decision = self.engine.evaluate(exposed_name, arguments)
+        if self.rate_limiter is not None:
+            allowed, retry_after = self.rate_limiter.allow(identity, exposed_name)
+            if not allowed:
+                decision = Decision("deny", "high", "rate-limit", "agent/tool rate limit exceeded")
+                self._audit(config, exposed_name, decision, "rate-limited", 0.0, request_id)
+                return self._tool_error(
+                    "tool call rate limited",
+                    {"code": "gateway.rate_limited", "retry_after_seconds": round(retry_after, 3)},
+                )
+
+        if self.egress_policy is not None:
+            blocked_hosts = self.egress_policy.violations(arguments)
+            if blocked_hosts:
+                decision = Decision("deny", "critical", "egress", "destination host is not allowlisted")
+                self._audit(config, exposed_name, decision, "egress-denied", 0.0, request_id)
+                return self._tool_error(
+                    "tool call blocked by egress policy",
+                    {"code": "gateway.egress_denied", "hosts": list(blocked_hosts)},
+                )
+
+        signals = prompt_injection_signals(arguments) if self.prompt_injection_review else ()
+        if signals:
+            decision = Decision("approval", "high", "prompt-injection", ", ".join(signals))
+        else:
+            decision = self.engine.evaluate(exposed_name, arguments, identity)
+
+        if decision.effect == "approval" and self._approval_valid(
+            approval_token, exposed_name, arguments, identity
+        ):
+            decision = Decision(
+                "allow",
+                decision.risk,
+                f"approved:{decision.rule_id}",
+                "signed human approval verified",
+            )
+
         if decision.effect == "deny":
             self._audit(config, exposed_name, decision, "denied", 0.0, request_id)
             return self._tool_error("tool call denied by gateway policy", {"decision": decision.__dict__})
         if decision.effect == "approval":
             self._audit(config, exposed_name, decision, "approval-required", 0.0, request_id)
-            return self._tool_error("human approval required", {"decision": decision.__dict__, "approval_required": True})
+            return self._tool_error(
+                "human approval required",
+                {
+                    "approval_required": True,
+                    "tool": exposed_name,
+                    "arguments_sha256": arguments_digest(arguments),
+                    "agent_id": identity.agent_id,
+                    "tenant": identity.tenant,
+                    "decision": decision.__dict__,
+                },
+            )
 
         breaker = self.breakers[config.name]
         started = time.perf_counter()
@@ -113,6 +177,18 @@ class PolicyGatewayService:
                 "upstream MCP server failed",
                 {"code": "gateway.upstream_error", "upstream": config.name, "detail": str(exc)},
             )
+
+    def _approval_valid(self, token: str | None, tool: str, arguments: dict, identity: AgentIdentity) -> bool:
+        return bool(
+            token
+            and self.approval_signer is not None
+            and self.approval_signer.verify(
+                token,
+                tool=tool,
+                arguments=arguments,
+                identity=identity,
+            )
+        )
 
     def _audit(
         self,
