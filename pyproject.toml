@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-policy-gateway"
-version = "0.3.0"
-description = "Zero-trust policy gateway for MCP tools with identity, approvals, rate limits, egress control, audit, and schema pinning"
+version = "0.4.0"
+description = "Zero-trust MCP policy gateway with identity, approvals, supply-chain protection, schema pinning, and audit"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 dependencies = [
@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 mcp-policy-gateway = "mcp_policy_gateway.cli:main"
+mcp-policy-scan = "mcp_policy_gateway.scan_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
