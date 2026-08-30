@@ -18,6 +18,7 @@ class UpstreamConfig:
     timeout_seconds: float = 30.0
     failure_threshold: int = 3
     recovery_seconds: float = 30.0
+    persistent_session: bool = True
 
     @classmethod
     def from_dict(cls, name: str, data: dict) -> "UpstreamConfig":
@@ -50,6 +51,10 @@ class UpstreamConfig:
         if not isinstance(env, dict) or not isinstance(passthrough, list) or not isinstance(headers, dict):
             raise ValueError("env and headers_from_env must be objects; env_passthrough must be a list")
 
+        persistent = data.get("persistent_session", True)
+        if not isinstance(persistent, bool):
+            raise ValueError("persistent_session must be a boolean")
+
         return cls(
             name=name,
             transport=transport,
@@ -64,6 +69,7 @@ class UpstreamConfig:
             timeout_seconds=timeout,
             failure_threshold=threshold,
             recovery_seconds=recovery,
+            persistent_session=persistent,
         )
 
 
