@@ -30,9 +30,9 @@
 - [x] egress/domain allowlists
 - [x] secret and PII redaction helpers
 - [x] prompt-injection risk signals
-- [ ] persistent upstream sessions where appropriate
+- [x] persistent upstream sessions with opt-out and automatic reconnect after transport failure
 
-Exit criteria: high-risk tool calls can be constrained by agent identity, arguments, rate limits and egress policy, then resumed only with a request-bound signed approval.
+Exit criteria: high-risk tool calls can be constrained by agent identity, arguments, rate limits and egress policy, then resumed only with a request-bound signed approval. Upstream MCP sessions can also be reused safely without paying a fresh initialization handshake for every tool operation.
 
 ## v0.4 — Supply-chain protection
 
