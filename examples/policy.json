@@ -1,0 +1,26 @@
+{
+  "default": "deny",
+  "rules": [
+    {
+      "id": "database-read",
+      "tool": "database.read*",
+      "effect": "allow",
+      "risk": "low",
+      "reason": "Read-only database tools are allowed"
+    },
+    {
+      "id": "database-delete-approval",
+      "tool": "database.delete*",
+      "effect": "approval",
+      "risk": "high",
+      "reason": "Destructive database operations require human approval"
+    },
+    {
+      "id": "database-drop-deny",
+      "tool": "database.drop*",
+      "effect": "deny",
+      "risk": "critical",
+      "reason": "Schema destruction is blocked"
+    }
+  ]
+}
