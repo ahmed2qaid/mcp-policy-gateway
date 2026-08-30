@@ -36,12 +36,15 @@ Exit criteria: high-risk tool calls can be constrained by agent identity, argume
 
 ## v0.4 — Supply-chain protection
 
-- persistent schema registry
-- signed schema pins
-- tool-name shadowing detection
-- server fingerprinting
-- policy bundles
-- CI security scan for MCP configurations
+- [x] persistent file-backed schema registry
+- [x] signed schema/fingerprint manifests with tamper verification
+- [x] tool-name shadowing and namespace-impersonation detection
+- [x] deterministic upstream server fingerprinting from transport + tool schemas
+- [x] validated policy bundle model
+- [x] configuration security scanner with severity thresholds
+- [x] CI security gate for MCP gateway configuration
+
+Exit criteria: changes to MCP tool schemas, upstream identity, tool naming, and gateway configuration can be reviewed and blocked before deployment instead of being trusted implicitly at runtime.
 
 ## v1.0
 
