@@ -4,10 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-policy-gateway"
-version = "0.1.0"
-description = "Policy enforcement and schema pinning for MCP tool calls"
+version = "0.2.0"
+description = "Zero-trust policy gateway for MCP tools with upstream routing, audit, and schema pinning"
 requires-python = ">=3.11"
 license = {text = "MIT"}
+dependencies = [
+  "mcp>=2.1,<3",
+  "httpx2>=2.12,<3",
+]
+
+[project.scripts]
+mcp-policy-gateway = "mcp_policy_gateway.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

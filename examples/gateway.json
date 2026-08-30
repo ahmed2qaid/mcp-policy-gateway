@@ -1,0 +1,26 @@
+{
+  "policy_file": "policy.json",
+  "audit_file": "audit.jsonl",
+  "enforce_schema_pins": false,
+  "auto_pin": false,
+  "schema_pins": {},
+  "upstreams": {
+    "local-demo": {
+      "transport": "stdio",
+      "command": "python",
+      "args": ["path/to/your_mcp_server.py"],
+      "prefix": "local",
+      "env_passthrough": ["OPENAI_API_KEY"],
+      "timeout_seconds": 30,
+      "failure_threshold": 3,
+      "recovery_seconds": 30
+    },
+    "remote-demo": {
+      "transport": "http",
+      "url": "http://127.0.0.1:9000/mcp",
+      "prefix": "remote",
+      "bearer_token_env": "REMOTE_MCP_TOKEN",
+      "timeout_seconds": 30
+    }
+  }
+}

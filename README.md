@@ -1,53 +1,117 @@
 # MCP Policy Gateway
 
-A zero-trust policy enforcement layer for MCP tool calls.
+A zero-trust policy enforcement gateway that sits between AI agents/MCP clients and real MCP servers.
 
 ```text
 MCP Client / AI Agent
         ↓
 MCP Policy Gateway
         ↓
-Policy decision
-  allow / deny / approval
+Policy + schema pin + circuit breaker + audit
         ↓
-MCP Server
+ one or many MCP upstream servers
 ```
 
-The project is intentionally policy-first: transport adapters can change, while the security decision model remains stable and testable.
+## What makes it different
 
-## v0.1
+The gateway is policy-first rather than vendor-first. Upstreams can be local stdio servers or remote Streamable HTTP servers, while the same policy engine decides whether a tool call is allowed, denied, or held for approval.
 
-- ordered policy-as-code rules
-- wildcard tool matching
-- `allow`, `deny`, and `approval` decisions
-- interception of MCP JSON-RPC `tools/call`
-- audit events for every tool decision
-- tool schema pinning with SHA-256 drift detection
-- zero-dependency Python core
-- tests and CI
+Tools are namespaced at the gateway boundary to prevent collisions:
 
-## Example policy
+```text
+local__filesystem_read
+crm__customer_lookup
+billing__refund_payment
+```
+
+## v0.2 — real MCP gateway
+
+- real MCP server facade built on the official MCP Python SDK v2
+- stdio client-facing transport
+- Streamable HTTP client-facing transport
+- stdio upstream servers
+- Streamable HTTP upstream servers
+- upstream registry and collision-safe tool namespaces
+- bearer/header authentication sourced from environment variables
+- request timeouts
+- per-upstream circuit breakers
+- structured append-only JSONL audit log
+- policy `allow`, `deny`, and `approval` decisions before forwarding
+- schema pin verification and optional enforcement
+- in-memory MCP protocol integration test
+- CI
+
+## Install
+
+```bash
+pip install -e .
+```
+
+The project targets the stable MCP Python SDK v2 line (`mcp>=2.1,<3`).
+
+## Configure
+
+Copy `examples/gateway.json` and point its upstreams at your MCP servers. Secrets are referenced by environment-variable name rather than stored directly in the config.
+
+```json
+{
+  "policy_file": "policy.json",
+  "audit_file": "audit.jsonl",
+  "upstreams": {
+    "billing": {
+      "transport": "http",
+      "url": "https://billing.internal/mcp",
+      "prefix": "billing",
+      "bearer_token_env": "BILLING_MCP_TOKEN"
+    }
+  }
+}
+```
+
+Policy example:
 
 ```json
 {
   "default": "deny",
   "rules": [
-    {"id": "read-only", "tool": "database.read*", "effect": "allow", "risk": "low"},
-    {"id": "delete-review", "tool": "database.delete*", "effect": "approval", "risk": "high"},
-    {"id": "block-drop", "tool": "database.drop*", "effect": "deny", "risk": "critical"}
+    {"id": "read", "tool": "billing__invoice_read*", "effect": "allow", "risk": "low"},
+    {"id": "refund", "tool": "billing__refund*", "effect": "approval", "risk": "high"},
+    {"id": "delete", "tool": "billing__delete*", "effect": "deny", "risk": "critical"}
   ]
 }
 ```
 
-## Security direction
+## Run over stdio
 
-Future versions add authentication, per-agent identity, egress policy, prompt-injection signals, secret/PII redaction, signed policies, rate limits, approval tokens, and network transports.
+Useful for desktop/IDE hosts that launch an MCP server as a subprocess:
+
+```bash
+mcp-policy-gateway --config examples/gateway.json --transport stdio
+```
+
+## Run over Streamable HTTP
+
+```bash
+mcp-policy-gateway \
+  --config examples/gateway.json \
+  --transport streamable-http \
+  --host 127.0.0.1 \
+  --port 8000
+```
+
+Clients connect to:
+
+```text
+http://127.0.0.1:8000/mcp
+```
+
+The HTTP server is stateless and uses JSON responses, matching the current MCP SDK deployment recommendation for scalable production gateways.
+
+## Current security boundary
+
+v0.2 enforces tool-level policy before forwarding and can detect pinned tool-schema drift. It does **not** yet claim full production zero-trust: per-agent identity, signed approvals, argument-level policy, rate limits, egress rules, PII redaction, and prompt-injection signals are scheduled next.
 
 See [ROADMAP.md](ROADMAP.md).
-
-## Status
-
-v0.1 foundation.
 
 ## License
 

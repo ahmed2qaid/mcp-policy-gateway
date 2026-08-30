@@ -22,6 +22,20 @@ class SchemaPinStore:
     def __init__(self) -> None:
         self._pins: dict[str, str] = {}
 
+    @classmethod
+    def from_dict(cls, pins: dict | None) -> "SchemaPinStore":
+        store = cls()
+        if pins is None:
+            return store
+        if not isinstance(pins, dict):
+            raise ValueError("schema_pins must be an object")
+        for tool, digest in pins.items():
+            value = str(digest).lower()
+            if len(value) != 64 or any(ch not in "0123456789abcdef" for ch in value):
+                raise ValueError(f"invalid schema digest for {tool}")
+            store._pins[str(tool)] = value
+        return store
+
     def pin(self, tool: str, schema: dict) -> str:
         if not tool:
             raise ValueError("tool name must not be empty")
