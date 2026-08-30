@@ -47,8 +47,8 @@ class SDKConnector:
     Upstreams use persistent initialized sessions by default so repeated tool
     discovery/calls do not pay a fresh MCP handshake for every operation.
     Set ``persistent_session`` to ``false`` for short-lived or incompatible
-    upstreams. Sessions can be closed individually after an upstream failure or
-    all at once during gateway shutdown.
+    upstreams. A failed persistent operation invalidates its cached session so
+    the next request performs a clean reconnect.
     """
 
     def __init__(self) -> None:
@@ -128,17 +128,25 @@ class SDKConnector:
             await self.close_upstream(name)
         self._locks.clear()
 
+    async def _run(self, config: UpstreamConfig, operation):
+        try:
+            return await asyncio.wait_for(operation(), timeout=config.timeout_seconds)
+        except Exception:
+            if config.persistent_session:
+                await self.close_upstream(config.name)
+            raise
+
     async def list_tools(self, config: UpstreamConfig):
         async def operation():
             async with self._client(config) as client:
                 result = await client.list_tools()
                 return list(result.tools)
 
-        return await asyncio.wait_for(operation(), timeout=config.timeout_seconds)
+        return await self._run(config, operation)
 
     async def call_tool(self, config: UpstreamConfig, name: str, arguments: dict):
         async def operation():
             async with self._client(config) as client:
                 return await client.call_tool(name, arguments)
 
-        return await asyncio.wait_for(operation(), timeout=config.timeout_seconds)
+        return await self._run(config, operation)
