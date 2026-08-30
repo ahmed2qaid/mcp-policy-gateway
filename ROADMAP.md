@@ -10,35 +10,29 @@
 - [x] tool schema pinning and drift detection
 - [x] tests and CI
 
-Exit criteria: a tool call can be blocked or held for approval before reaching an upstream MCP server.
-
 ## v0.2 — Network gateway
 
 - [x] real MCP server facade using the official MCP Python SDK v2
-- [x] stdio client-facing transport
-- [x] Streamable HTTP client-facing transport
-- [x] stdio upstream transport
-- [x] Streamable HTTP upstream transport
-- [x] upstream server registry and tool namespacing
-- [x] per-server bearer/custom-header authentication sourced from environment variables
-- [x] request timeouts
-- [x] per-upstream circuit breaking
-- [x] structured JSONL audit sink
-- [x] optional schema-pin enforcement at tool discovery
-- [x] MCP protocol integration test using an in-memory client
-
-Exit criteria: a standard MCP client can connect to the gateway, discover namespaced tools from one or more upstreams, and invoke only policy-approved tools.
+- [x] stdio and Streamable HTTP client-facing transports
+- [x] stdio and Streamable HTTP upstream transports
+- [x] upstream registry and collision-safe tool namespaces
+- [x] environment-backed upstream authentication
+- [x] timeouts, circuit breaking, JSONL audit
+- [x] schema-pin enforcement and MCP integration tests
 
 ## v0.3 — Zero-trust controls
 
-- per-agent identity
-- signed approval tokens and approval resume flow
-- rate limiting
-- argument-level policy conditions
-- egress/domain allowlists
-- secret and PII redaction
-- prompt-injection risk signals
-- persistent HTTP/stdio upstream sessions where appropriate
+- [x] per-agent identity model
+- [x] signed, short-lived approval tokens bound to tool arguments
+- [x] approval resume flow in the policy service
+- [x] per-agent/per-tool sliding-window rate limiting
+- [x] identity, role, and argument-level policy conditions
+- [x] egress/domain allowlists
+- [x] secret and PII redaction helpers
+- [x] prompt-injection risk signals
+- [ ] persistent upstream sessions where appropriate
+
+Exit criteria: high-risk tool calls can be constrained by agent identity, arguments, rate limits and egress policy, then resumed only with a request-bound signed approval.
 
 ## v0.4 — Supply-chain protection
 
