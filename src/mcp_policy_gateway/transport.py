@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx2
 from mcp import Client, StdioServerParameters
@@ -42,10 +42,22 @@ class CircuitBreaker:
 
 
 class SDKConnector:
-    """Connect to real MCP upstreams using the official MCP Python SDK v2."""
+    """Connect to real MCP upstreams using the official MCP Python SDK v2.
+
+    Upstreams use persistent initialized sessions by default so repeated tool
+    discovery/calls do not pay a fresh MCP handshake for every operation.
+    Set ``persistent_session`` to ``false`` for short-lived or incompatible
+    upstreams. Sessions can be closed individually after an upstream failure or
+    all at once during gateway shutdown.
+    """
+
+    def __init__(self) -> None:
+        self._clients: dict[str, object] = {}
+        self._stacks: dict[str, AsyncExitStack] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
 
     @asynccontextmanager
-    async def _client(self, config: UpstreamConfig):
+    async def _open_client(self, config: UpstreamConfig):
         if config.transport == "http":
             headers: dict[str, str] = {}
             if config.bearer_token_env:
@@ -73,6 +85,48 @@ class SDKConnector:
         params = StdioServerParameters(command=str(config.command), args=list(config.args), env=env or None)
         async with Client(params) as client:
             yield client
+
+    async def _persistent_client(self, config: UpstreamConfig):
+        existing = self._clients.get(config.name)
+        if existing is not None:
+            return existing
+
+        lock = self._locks.setdefault(config.name, asyncio.Lock())
+        async with lock:
+            existing = self._clients.get(config.name)
+            if existing is not None:
+                return existing
+
+            stack = AsyncExitStack()
+            await stack.__aenter__()
+            try:
+                client = await stack.enter_async_context(self._open_client(config))
+            except Exception:
+                await stack.aclose()
+                raise
+            self._stacks[config.name] = stack
+            self._clients[config.name] = client
+            return client
+
+    @asynccontextmanager
+    async def _client(self, config: UpstreamConfig):
+        if config.persistent_session:
+            yield await self._persistent_client(config)
+            return
+        async with self._open_client(config) as client:
+            yield client
+
+    async def close_upstream(self, upstream_name: str) -> None:
+        self._clients.pop(upstream_name, None)
+        stack = self._stacks.pop(upstream_name, None)
+        if stack is not None:
+            await stack.aclose()
+
+    async def aclose(self) -> None:
+        names = tuple(self._stacks)
+        for name in names:
+            await self.close_upstream(name)
+        self._locks.clear()
 
     async def list_tools(self, config: UpstreamConfig):
         async def operation():
